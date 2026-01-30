@@ -1,10 +1,10 @@
-FROM ruby:3.3-slim
+FROM ruby:3-alpine
 
 RUN gem install xmlrpc
 
-WORKDIR /app
-COPY test_server.rb .
+WORKDIR /usr/local/src/xmlrpcserver
+COPY *.rb .
 
 EXPOSE 5001
 
-CMD ["ruby", "test_server.rb"]
+CMD ["ruby", "server.rb"]
