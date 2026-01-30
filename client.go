@@ -1,9 +1,24 @@
+// Package xmlrpc provides an XML-RPC client implementation for Go.
+//
+// The package implements the client side of the XML-RPC protocol,
+// allowing Go programs to make remote procedure calls to XML-RPC servers.
+//
+// Basic usage:
+//
+//	client, err := xmlrpc.NewClient("https://example.com/xmlrpc", nil)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	defer client.Close()
+//
+//	var result string
+//	err = client.Call("Method.Name", arg, &result)
 package xmlrpc
 
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/rpc"
@@ -11,6 +26,8 @@ import (
 	"sync"
 )
 
+// Client represents an XML-RPC client. It embeds [rpc.Client] and
+// provides all of its methods, including Call and Close.
 type Client struct {
 	*rpc.Client
 }
@@ -40,7 +57,7 @@ type clientCodec struct {
 	close chan uint64
 }
 
-func (codec *clientCodec) WriteRequest(request *rpc.Request, args interface{}) (err error) {
+func (codec *clientCodec) WriteRequest(request *rpc.Request, args any) (err error) {
 	httpRequest, err := NewRequest(codec.url.String(), request.ServiceMethod, args)
 
 	if err != nil {
@@ -94,7 +111,7 @@ func (codec *clientCodec) ReadResponseHeader(response *rpc.Response) (err error)
 		return nil
 	}
 
-	body, err := ioutil.ReadAll(httpResponse.Body)
+	body, err := io.ReadAll(httpResponse.Body)
 	if err != nil {
 		response.Error = err.Error()
 		return nil
@@ -111,7 +128,7 @@ func (codec *clientCodec) ReadResponseHeader(response *rpc.Response) (err error)
 	return nil
 }
 
-func (codec *clientCodec) ReadResponseBody(v interface{}) (err error) {
+func (codec *clientCodec) ReadResponseBody(v any) (err error) {
 	if v == nil {
 		return nil
 	}
@@ -128,7 +145,9 @@ func (codec *clientCodec) Close() error {
 	return nil
 }
 
-// NewClient returns instance of rpc.Client object, that is used to send request to xmlrpc service.
+// NewClient creates a new XML-RPC client for the given URL.
+// The transport parameter specifies the [http.RoundTripper] to use for HTTP requests.
+// If transport is nil, [http.DefaultTransport] is used.
 func NewClient(requrl string, transport http.RoundTripper) (*Client, error) {
 	if transport == nil {
 		transport = http.DefaultTransport

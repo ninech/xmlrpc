@@ -20,23 +20,27 @@ const (
 )
 
 var (
-	// CharsetReader is a function to generate reader which converts a non UTF-8
-	// charset into UTF-8.
+	// CharsetReader, if non-nil, defines a function to generate a reader
+	// that converts a non-UTF-8 charset into UTF-8. It has the same signature
+	// as [xml.Decoder.CharsetReader].
 	CharsetReader func(string, io.Reader) (io.Reader, error)
 
-	timeLayouts     = []string{iso8601, iso8601Z, iso8601Hyphen, iso8601HyphenZ}
-	invalidXmlError = errors.New("invalid xml")
+	timeLayouts   = []string{iso8601, iso8601Z, iso8601Hyphen, iso8601HyphenZ}
+	errInvalidXML = errors.New("invalid xml")
 )
 
+// TypeMismatchError is returned when the XML-RPC response type does not match
+// the expected Go type during unmarshaling.
 type TypeMismatchError string
 
+// Error returns the error message describing the type mismatch.
 func (e TypeMismatchError) Error() string { return string(e) }
 
 type decoder struct {
 	*xml.Decoder
 }
 
-func unmarshal(data []byte, v interface{}) (err error) {
+func unmarshal(data []byte, v any) (err error) {
 	dec := &decoder{xml.NewDecoder(bytes.NewBuffer(data))}
 
 	if CharsetReader != nil {
@@ -94,7 +98,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 			if t.Name.Local == "value" {
 				return nil
 			} else {
-				return invalidXmlError
+				return errInvalidXML
 			}
 		}
 
@@ -129,7 +133,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 				}
 				ismap = true
 			} else if checkType(val, reflect.Interface) == nil && val.IsNil() {
-				var dummy map[string]interface{}
+				var dummy map[string]any
 				valType = reflect.TypeOf(dummy)
 				pmap = reflect.New(valType).Elem()
 				val.Set(pmap)
@@ -174,7 +178,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 			switch t := tok.(type) {
 			case xml.StartElement:
 				if t.Name.Local != "member" {
-					return invalidXmlError
+					return errInvalidXML
 				}
 
 				tagName, fieldName, err := dec.readTag()
@@ -182,7 +186,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 					return err
 				}
 				if tagName != "name" {
-					return invalidXmlError
+					return errInvalidXML
 				}
 
 				var fv reflect.Value
@@ -230,7 +234,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 	case "array":
 		slice := val
 		if checkType(val, reflect.Interface) == nil && val.IsNil() {
-			slice = reflect.ValueOf([]interface{}{})
+			slice = reflect.ValueOf([]any{})
 		} else if err = checkType(val, reflect.Slice); err != nil {
 			return err
 		}
@@ -245,7 +249,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 			case xml.StartElement:
 				var index int
 				if t.Name.Local != "data" {
-					return invalidXmlError
+					return errInvalidXML
 				}
 			DataLoop:
 				for {
@@ -256,7 +260,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 					switch tt := tok.(type) {
 					case xml.StartElement:
 						if tt.Name.Local != "value" {
-							return invalidXmlError
+							return errInvalidXML
 						}
 
 						if index < slice.Len() {
@@ -305,7 +309,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 		case xml.CharData:
 			data = []byte(t.Copy())
 		default:
-			return invalidXmlError
+			return errInvalidXML
 		}
 
 		switch typeName {
@@ -446,7 +450,7 @@ func (dec *decoder) readCharData() ([]byte, error) {
 	if t, ok := tok.(xml.CharData); ok {
 		return []byte(t.Copy()), nil
 	} else {
-		return nil, invalidXmlError
+		return nil, errInvalidXML
 	}
 }
 

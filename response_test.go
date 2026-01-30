@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-const faultRespXml = `
+const faultRespXML = `
 <?xml version="1.0" encoding="UTF-8"?>
 <methodResponse>
   <fault>
@@ -28,7 +28,7 @@ const faultRespXml = `
 </methodResponse>`
 
 func Test_failedResponse(t *testing.T) {
-	resp := Response([]byte(faultRespXml))
+	resp := Response([]byte(faultRespXML))
 
 	if resp.Err() == nil {
 		t.Fatal("Err() error: expected error, got nil")
