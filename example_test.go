@@ -12,7 +12,7 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	var result struct {
 		Version string `xmlrpc:"version"`
