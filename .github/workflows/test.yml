@@ -24,6 +24,19 @@ jobs:
           go-version: stable
       - run: go test -v ./... -race -bench=. -benchmem -cover -coverprofile cover.out 2>&1 | tee test.out
       - run: go tool cover -func cover.out
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: docker compose up -d --wait
+      - run: go test -v -tags integration ./...
+      - run: docker compose down
+        if: always()
   lint:
     runs-on: ubuntu-latest
     steps:
