@@ -5,7 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +27,7 @@ func encodeValue(val reflect.Value) ([]byte, error) {
 	var b []byte
 	var err error
 
-	if val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
+	if val.Kind() == reflect.Pointer || val.Kind() == reflect.Interface {
 		if val.IsNil() {
 			return []byte("<value/>"), nil
 		}
@@ -37,11 +37,9 @@ func encodeValue(val reflect.Value) ([]byte, error) {
 
 	switch val.Kind() {
 	case reflect.Struct:
-		switch val.Interface().(type) {
-		case time.Time:
-			t := val.Interface().(time.Time)
+		if t, ok := val.Interface().(time.Time); ok {
 			b = fmt.Appendf(nil, "<dateTime.iso8601>%s</dateTime.iso8601>", t.Format(iso8601))
-		default:
+		} else {
 			b, err = encodeStruct(val)
 		}
 	case reflect.Map:
@@ -72,7 +70,7 @@ func encodeValue(val reflect.Value) ([]byte, error) {
 			b = fmt.Appendf(nil, "<string>%s</string>", buf.String())
 		}
 	default:
-		return nil, fmt.Errorf("xmlrpc encode error: unsupported type")
+		return nil, fmt.Errorf("xmlrpc: unsupported type %s", val.Kind())
 	}
 
 	if err != nil {
@@ -111,8 +109,7 @@ func encodeStruct(structVal reflect.Value) ([]byte, error) {
 			return nil, err
 		}
 
-		b.WriteString("<member>")
-		b.WriteString(fmt.Sprintf("<name>%s</name>", name))
+		fmt.Fprintf(&b, "<member><name>%s</name>", name)
 		b.Write(p)
 		b.WriteString("</member>")
 	}
@@ -122,13 +119,11 @@ func encodeStruct(structVal reflect.Value) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-var sortMapKeys bool
-
 func encodeMap(val reflect.Value) ([]byte, error) {
-	var t = val.Type()
+	t := val.Type()
 
 	if t.Key().Kind() != reflect.String {
-		return nil, fmt.Errorf("xmlrpc encode error: only maps with string keys are supported")
+		return nil, fmt.Errorf("xmlrpc: map key type %s not supported, must be string", t.Key().Kind())
 	}
 
 	var b bytes.Buffer
@@ -136,20 +131,16 @@ func encodeMap(val reflect.Value) ([]byte, error) {
 	b.WriteString("<struct>")
 
 	keys := val.MapKeys()
+	slices.SortFunc(keys, func(a, b reflect.Value) int {
+		return strings.Compare(a.String(), b.String())
+	})
 
-	if sortMapKeys {
-		sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
-	}
-
-	for i := 0; i < val.Len(); i++ {
-		key := keys[i]
+	for _, key := range keys {
 		kval := val.MapIndex(key)
 
-		b.WriteString("<member>")
-		b.WriteString(fmt.Sprintf("<name>%s</name>", key.String()))
+		fmt.Fprintf(&b, "<member><name>%s</name>", key.String())
 
 		p, err := encodeValue(kval)
-
 		if err != nil {
 			return nil, err
 		}
