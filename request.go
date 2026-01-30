@@ -2,8 +2,10 @@ package xmlrpc
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 // NewRequest creates an [http.Request] for an XML-RPC call to the given URL.
@@ -29,7 +31,7 @@ func NewRequest(url string, method string, args any) (*http.Request, error) {
 	}
 
 	request.Header.Set("Content-Type", "text/xml")
-	request.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	request.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
 	return request, nil
 }
@@ -38,8 +40,11 @@ func NewRequest(url string, method string, args any) (*http.Request, error) {
 // and arguments into XML bytes.
 func EncodeMethodCall(method string, args ...any) ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
-	b.WriteString(fmt.Sprintf("<methodCall><methodName>%s</methodName>", method))
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?><methodCall><methodName>`)
+	if err := xml.EscapeText(&b, []byte(method)); err != nil {
+		return nil, fmt.Errorf("xmlrpc: failed to encode method name: %w", err)
+	}
+	b.WriteString("</methodName>")
 
 	if args != nil {
 		b.WriteString("<params>")
@@ -47,10 +52,12 @@ func EncodeMethodCall(method string, args ...any) ([]byte, error) {
 		for _, arg := range args {
 			p, err := marshal(arg)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("xmlrpc: failed to encode argument: %w", err)
 			}
 
-			b.WriteString(fmt.Sprintf("<param>%s</param>", string(p)))
+			b.WriteString("<param>")
+			b.Write(p)
+			b.WriteString("</param>")
 		}
 
 		b.WriteString("</params>")
