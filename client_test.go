@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package xmlrpc
@@ -64,7 +65,6 @@ func Test_TwoCalls(t *testing.T) {
 	if err := client.Call("service.sum", []interface{}{2, 3}, &sum); err != nil {
 		t.Fatalf("service.sum call error: %v", err)
 	}
-
 }
 
 func Test_FailedCall(t *testing.T) {
@@ -135,7 +135,6 @@ func Test_CloseMemoryLeak(t *testing.T) {
 }
 
 func Test_BadStatus(t *testing.T) {
-
 	// this is a mock xmlrpc server which sends an invalid status code on the first request
 	// and an empty methodResponse for all subsequence requests
 	first := true

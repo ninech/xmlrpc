@@ -171,7 +171,6 @@ const arrayValueXML = `
 `
 
 func Test_unmarshalExistingArray(t *testing.T) {
-
 	var (
 		v1 int
 		v2 bool
