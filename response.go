@@ -1,12 +1,8 @@
 package xmlrpc
 
 import (
+	"bytes"
 	"fmt"
-	"regexp"
-)
-
-var (
-	faultRx = regexp.MustCompile(`<fault>(\s|\S)+</fault>`)
 )
 
 // FaultError represents an XML-RPC fault response from the server.
@@ -26,21 +22,17 @@ type Response []byte
 // Err checks if the response contains a fault and returns it as a [FaultError].
 // If the response is not a fault, Err returns nil.
 func (r Response) Err() error {
-	if !faultRx.Match(r) {
+	if !bytes.Contains(r, []byte("<fault>")) {
 		return nil
 	}
 	var fault FaultError
 	if err := unmarshal(r, &fault); err != nil {
-		return err
+		return fmt.Errorf("xmlrpc: failed to parse fault response: %w", err)
 	}
 	return fault
 }
 
 // Unmarshal decodes the XML-RPC response into v.
 func (r Response) Unmarshal(v any) error {
-	if err := unmarshal(r, v); err != nil {
-		return err
-	}
-
-	return nil
+	return unmarshal(r, v)
 }
