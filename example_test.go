@@ -8,7 +8,9 @@ import (
 )
 
 func Example() {
-	client, err := xmlrpc.NewClient("https://example.com/xmlrpc", nil)
+	client, err := xmlrpc.NewClientWithOptions("https://example.com/xmlrpc",
+		xmlrpc.WithHeader("User-Agent", "my-app/1.0"),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -21,6 +23,21 @@ func Example() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Version: %s\n", result.Version)
+}
+
+func ExampleWithBasicAuth() {
+	client, err := xmlrpc.NewClientWithOptions("https://example.com/xmlrpc",
+		xmlrpc.WithBasicAuth("username", "password"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+
+	var result string
+	if err := client.Call("Secure.method", nil, &result); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func ExampleEncodeMethodCall() {
