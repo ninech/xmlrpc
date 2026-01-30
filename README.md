@@ -1,4 +1,4 @@
-[![GoDoc](https://godoc.org/github.com/kolo/xmlrpc?status.svg)](https://godoc.org/github.com/kolo/xmlrpc)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ninech/xmlrpc#section-readme.svg)](https://pkg.go.dev/github.com/ninech/xmlrpc#section-readme) [![Go Report Card](https://goreportcard.com/badge/github.com/ninech/xmlrpc)](https://goreportcard.com/report/github.com/ninech/xmlrpc)
 
 ## Overview
 
