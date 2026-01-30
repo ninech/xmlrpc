@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +27,7 @@ var (
 	CharsetReader func(string, io.Reader) (io.Reader, error)
 
 	timeLayouts   = []string{iso8601, iso8601Z, iso8601Hyphen, iso8601HyphenZ}
-	errInvalidXML = errors.New("invalid xml")
+	errInvalidXML = errors.New("xmlrpc: invalid XML structure")
 )
 
 // TypeMismatchError is returned when the XML-RPC response type does not match
@@ -56,8 +57,8 @@ func unmarshal(data []byte, v any) (err error) {
 		if t, ok := tok.(xml.StartElement); ok {
 			if t.Name.Local == "value" {
 				val := reflect.ValueOf(v)
-				if val.Kind() != reflect.Ptr {
-					return errors.New("non-pointer value passed to unmarshal")
+				if val.Kind() != reflect.Pointer {
+					return fmt.Errorf("xmlrpc: non-pointer value passed to unmarshal")
 				}
 				if err = dec.decodeValue(val.Elem()); err != nil {
 					return err
@@ -70,7 +71,7 @@ func unmarshal(data []byte, v any) (err error) {
 
 	// read until end of document
 	err = dec.Skip()
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
 
@@ -81,7 +82,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 	var tok xml.Token
 	var err error
 
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			val.Set(reflect.New(val.Type().Elem()))
 		}
@@ -129,12 +130,11 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 		if err = checkType(val, reflect.Struct); err != nil {
 			if checkType(val, reflect.Map) == nil {
 				if valType.Key().Kind() != reflect.String {
-					return fmt.Errorf("only maps with string key type can be unmarshalled")
+					return fmt.Errorf("xmlrpc: map key type %s not supported, must be string", valType.Key().Kind())
 				}
 				ismap = true
 			} else if checkType(val, reflect.Interface) == nil && val.IsNil() {
-				var dummy map[string]any
-				valType = reflect.TypeOf(dummy)
+				valType = reflect.TypeFor[map[string]any]()
 				pmap = reflect.New(valType).Elem()
 				val.Set(pmap)
 				ismap = true
@@ -268,8 +268,8 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 							if v.Kind() == reflect.Interface {
 								v = v.Elem()
 							}
-							if v.Kind() != reflect.Ptr {
-								return errors.New("error: cannot write to non-pointer array element")
+							if v.Kind() != reflect.Pointer {
+								return fmt.Errorf("xmlrpc: cannot write to non-pointer array element")
 							}
 							if err = dec.decodeValue(v); err != nil {
 								return err
@@ -320,7 +320,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 					return err
 				}
 
-				pi := reflect.New(reflect.TypeOf(i)).Elem()
+				pi := reflect.New(reflect.TypeFor[int64]()).Elem()
 				pi.SetInt(i)
 				val.Set(pi)
 			} else if err = checkType(val, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64); err != nil {
@@ -336,7 +336,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 		case "string", "base64":
 			str := string(data)
 			if checkType(val, reflect.Interface) == nil && val.IsNil() {
-				pstr := reflect.New(reflect.TypeOf(str)).Elem()
+				pstr := reflect.New(reflect.TypeFor[string]()).Elem()
 				pstr.SetString(str)
 				val.Set(pstr)
 			} else if err = checkType(val, reflect.String); err != nil {
@@ -359,11 +359,11 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 			}
 
 			if checkType(val, reflect.Interface) == nil && val.IsNil() {
-				ptime := reflect.New(reflect.TypeOf(t)).Elem()
+				ptime := reflect.New(reflect.TypeFor[time.Time]()).Elem()
 				ptime.Set(reflect.ValueOf(t))
 				val.Set(ptime)
 			} else if _, ok := val.Interface().(time.Time); !ok {
-				return TypeMismatchError(fmt.Sprintf("error: type mismatch error - can't decode %v to time", val.Kind()))
+				return TypeMismatchError(fmt.Sprintf("xmlrpc: cannot decode %v to time.Time", val.Kind()))
 			} else {
 				val.Set(reflect.ValueOf(t))
 			}
@@ -374,7 +374,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 			}
 
 			if checkType(val, reflect.Interface) == nil && val.IsNil() {
-				pv := reflect.New(reflect.TypeOf(v)).Elem()
+				pv := reflect.New(reflect.TypeFor[bool]()).Elem()
 				pv.SetBool(v)
 				val.Set(pv)
 			} else if err = checkType(val, reflect.Bool); err != nil {
@@ -389,7 +389,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 					return err
 				}
 
-				pdouble := reflect.New(reflect.TypeOf(i)).Elem()
+				pdouble := reflect.New(reflect.TypeFor[float64]()).Elem()
 				pdouble.SetFloat(i)
 				val.Set(pdouble)
 			} else if err = checkType(val, reflect.Float32, reflect.Float64); err != nil {
@@ -403,7 +403,7 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 				val.SetFloat(i)
 			}
 		default:
-			return errors.New("unsupported type")
+			return fmt.Errorf("xmlrpc: unsupported type %q", typeName)
 		}
 
 		// </type>
@@ -440,18 +440,16 @@ func (dec *decoder) readTag() (string, []byte, error) {
 }
 
 func (dec *decoder) readCharData() ([]byte, error) {
-	var tok xml.Token
-	var err error
-
-	if tok, err = dec.Token(); err != nil {
+	tok, err := dec.Token()
+	if err != nil {
 		return nil, err
 	}
 
-	if t, ok := tok.(xml.CharData); ok {
-		return []byte(t.Copy()), nil
-	} else {
+	t, ok := tok.(xml.CharData)
+	if !ok {
 		return nil, errInvalidXML
 	}
+	return bytes.Clone(t), nil
 }
 
 func checkType(val reflect.Value, kinds ...reflect.Kind) error {
@@ -459,22 +457,15 @@ func checkType(val reflect.Value, kinds ...reflect.Kind) error {
 		return nil
 	}
 
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
-	match := false
-
-	for _, kind := range kinds {
-		if val.Kind() == kind {
-			match = true
-			break
-		}
-	}
+	match := slices.Contains(kinds, val.Kind())
 
 	if !match {
-		return TypeMismatchError(fmt.Sprintf("error: type mismatch - can't unmarshal %v to %v",
-			val.Kind(), kinds[0]))
+		return TypeMismatchError(fmt.Sprintf("xmlrpc: cannot unmarshal %v to %v",
+			kinds[0], val.Kind()))
 	}
 
 	return nil
