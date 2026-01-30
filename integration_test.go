@@ -4,10 +4,28 @@ package xmlrpc
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"sync"
 	"testing"
 	"time"
 )
+
+func ExampleNewClientWithOptions() {
+	client, err := NewClientWithOptions("https://bugzilla.mozilla.org/xmlrpc.cgi")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	var result struct {
+		Version string `xmlrpc:"version"`
+	}
+	if err := client.Call("Bugzilla.version", nil, &result); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Version: %s\n", result.Version) // Version: 4.2.7+
+}
 
 func TestIntegration_CallWithoutArgs(t *testing.T) {
 	client := newIntegrationClient(t)
