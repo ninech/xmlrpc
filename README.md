@@ -2,7 +2,7 @@
 
 ## Overview
 
-xmlrpc is an implementation of client side part of XMLRPC protocol in Go language.
+xmlrpc is an implementation of client side part of XML-RPC protocol in Go.
 
 ## Status
 
@@ -11,50 +11,95 @@ are accepted, but it might take some time until they are merged.
 
 ## Installation
 
-To install xmlrpc package run `go get github.com/ninech/xmlrpc`. To use
-it in application add `"github.com/ninech/xmlrpc"` string to `import`
-statement.
+```bash
+go get github.com/ninech/xmlrpc
+```
 
 ## Usage
 
-    client, _ := xmlrpc.NewClient("https://bugzilla.mozilla.org/xmlrpc.cgi", nil)
-    result := struct{
-      Version string `xmlrpc:"version"`
-    }{}
-    client.Call("Bugzilla.version", nil, &result)
-    fmt.Printf("Version: %s\n", result.Version) // Version: 4.2.7+
+```go
+client, err := xmlrpc.NewClientWithOptions("https://bugzilla.mozilla.org/xmlrpc.cgi")
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
 
-Second argument of NewClient function is an object that implements
-[http.RoundTripper](http://golang.org/pkg/net/http/#RoundTripper)
-interface, it can be used to get more control over connection options.
-By default it is initialized by http.DefaultTransport object.
+var result struct {
+    Version string `xmlrpc:"version"`
+}
+if err := client.Call("Bugzilla.version", nil, &result); err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Version: %s\n", result.Version) // Version: 4.2.7+
+```
+
+### With Context
+
+Use `CallContext` for requests with timeout or cancellation:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+var result string
+if err := client.CallContext(ctx, "App.status", nil, &result); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Client Options
+
+Configure the client with functional options:
+
+```go
+client, err := xmlrpc.NewClientWithOptions(url,
+    xmlrpc.WithBasicAuth("username", "password"),
+    xmlrpc.WithHeader("User-Agent", "my-app/1.0"),
+)
+```
+
+Available options:
+
+- `WithHTTPClient(*http.Client)` - use a custom HTTP client
+- `WithTransport(http.RoundTripper)` - set a custom transport
+- `WithHeader(key, value string)` - add a header to all requests
+- `WithBasicAuth(user, pass string)` - set basic authentication
+- `WithCookieJar(http.CookieJar)` - set a custom cookie jar
 
 ### Arguments encoding
 
-xmlrpc package supports encoding of native Go data types to method
-arguments.
+xmlrpc supports encoding of native Go data types to method arguments.
 
 Data types encoding rules:
 
-* int, int8, int16, int32, int64 encoded to int;
-* float32, float64 encoded to double;
-* bool encoded to boolean;
-* string encoded to string;
-* time.Time encoded to datetime.iso8601;
-* xmlrpc.Base64 encoded to base64;
-* slice encoded to array;
+- `int`, `int8`, `int16`, `int32`, `int64` encoded to `int`
+- `float32`, `float64` encoded to `double`
+- `bool` encoded to `boolean`
+- `string` encoded to `string`
+- `time.Time` encoded to `dateTime.iso8601`
+- `xmlrpc.Base64` encoded to `base64`
+- slices encoded to `array`
 
-Structs are encoded to struct by the following rules:
+Structs are encoded to `struct` by the following rules:
 
-* all public fields become struct members;
-* field name becomes member name;
-* if field has xmlrpc tag, its value becomes member name.
-* for fields tagged with `",omitempty"`, empty values are omitted;
-* fields tagged with `"-"` are omitted.
+- all public fields become struct members
+- field name becomes member name
+- if field has `xmlrpc` tag, its value becomes member name
+- for fields tagged with `omitempty`, empty values are omitted
+- fields tagged with `-` are omitted
 
-Server methods can accept multiple arguments, to handle this case there is
-a special approach to handle slice of empty interfaces (`[]interface{}`).
-Each value of such slice is encoded as a separate argument.
+Example:
+
+```go
+type Book struct {
+    Title  string `xmlrpc:"title"`
+    Author string `xmlrpc:"author,omitempty"`
+    ISBN   string `xmlrpc:"-"`
+}
+```
+
+Server methods can accept multiple arguments. To handle this case, use a slice
+of `[]any`. Each value of such slice is encoded as a separate argument.
 
 ### Result decoding
 
@@ -62,14 +107,14 @@ Result of remote function is decoded to native Go data type.
 
 Data types decoding rules:
 
-* int, i4 decoded to int, int8, int16, int32, int64;
-* double decoded to float32, float64;
-* boolean decoded to bool;
-* string decoded to string;
-* array decoded to slice;
-* structs are decoded following the rules described in previous section;
-* datetime.iso8601 decoded as time.Time data type;
-* base64 decoded to string.
+- `int`, `i4` decoded to `int`, `int8`, `int16`, `int32`, `int64`
+- `double` decoded to `float32`, `float64`
+- `boolean` decoded to `bool`
+- `string` decoded to `string`
+- `array` decoded to slice
+- `struct` decoded following the rules described in previous section
+- `dateTime.iso8601` decoded to `time.Time`
+- `base64` decoded to `string`
 
 ## Testing
 
@@ -82,9 +127,9 @@ go test ./...
 Run integration tests (requires Docker):
 
 ```bash
-docker-compose up -d # Start the test server
-go test -tags integration ./... # Run all tests including integration tests
-docker-compose down # Stop the test server
+docker-compose up -d
+go test -tags integration ./...
+docker-compose down
 ```
 
 ## Contribution
