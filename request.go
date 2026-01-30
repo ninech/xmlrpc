@@ -2,6 +2,7 @@ package xmlrpc
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"net/http"
@@ -12,6 +13,18 @@ import (
 // The method parameter is the XML-RPC method name, and args contains the arguments
 // to pass to the remote method.
 func NewRequest(url string, method string, args any) (*http.Request, error) {
+	return NewRequestContext(context.Background(), url, method, args)
+}
+
+// NewRequestContext creates an [http.Request] with context for an XML-RPC call to the given URL.
+// The method parameter is the XML-RPC method name, and args contains the arguments
+// to pass to the remote method.
+func NewRequestContext(
+	ctx context.Context,
+	url string,
+	method string,
+	args any,
+) (*http.Request, error) {
 	var t []any
 	var ok bool
 	if t, ok = args.([]any); !ok {
@@ -25,7 +38,7 @@ func NewRequest(url string, method string, args any) (*http.Request, error) {
 		return nil, err
 	}
 
-	request, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

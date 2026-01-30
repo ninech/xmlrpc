@@ -20,6 +20,6 @@ class Service
   end
 end
 
-server = XMLRPC::Server.new 5001, 'localhost'
+server = XMLRPC::Server.new 5001, '0.0.0.0'
 server.add_handler "service", Service.new
 server.serve

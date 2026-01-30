@@ -123,7 +123,10 @@ func encodeMap(val reflect.Value) ([]byte, error) {
 	t := val.Type()
 
 	if t.Key().Kind() != reflect.String {
-		return nil, fmt.Errorf("xmlrpc: map key type %s not supported, must be string", t.Key().Kind())
+		return nil, fmt.Errorf(
+			"xmlrpc: map key type %s not supported, must be string",
+			t.Key().Kind(),
+		)
 	}
 
 	var b bytes.Buffer

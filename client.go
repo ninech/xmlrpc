@@ -19,17 +19,10 @@
 package xmlrpc
 
 import (
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"net/rpc"
 	"net/url"
-	"sync"
 )
-
-// ErrCodecClosed is returned when attempting to read from a closed codec.
-var ErrCodecClosed = fmt.Errorf("xmlrpc: codec is closed")
 
 // clientOptions holds configuration for the XML-RPC client.
 type clientOptions struct {
@@ -92,129 +85,19 @@ func WithCookieJar(jar http.CookieJar) Option {
 	}
 }
 
-// Client represents an XML-RPC client. It embeds [rpc.Client] and
-// provides all of its methods, including Call and Close.
+// Client represents an XML-RPC client.
 type Client struct {
-	*rpc.Client
-}
-
-// clientCodec is rpc.ClientCodec interface implementation.
-type clientCodec struct {
-	// url presents url of xmlrpc service
-	url *url.URL
-
-	// httpClient works with HTTP protocol
+	url        *url.URL
 	httpClient *http.Client
-
-	// cookies stores cookies received on last request
-	cookies http.CookieJar
-
-	// headers are added to each request
-	headers http.Header
-
-	// responses presents map of active requests. It is required to return request id, that
-	// rpc.Client can mark them as done.
-	responses map[uint64]*http.Response
-	mutex     sync.Mutex
-
-	response Response
-
-	// ready presents channel, that is used to link request and it`s response.
-	ready chan uint64
-
-	// close notifies codec is closed.
-	close chan uint64
+	cookies    http.CookieJar
+	headers    http.Header
 }
 
-func (codec *clientCodec) WriteRequest(request *rpc.Request, args any) (err error) {
-	httpRequest, err := NewRequest(codec.url.String(), request.ServiceMethod, args)
-	if err != nil {
-		return err
-	}
-
-	for key, values := range codec.headers {
-		for _, value := range values {
-			httpRequest.Header.Add(key, value)
-		}
-	}
-
-	if codec.cookies != nil {
-		for _, cookie := range codec.cookies.Cookies(codec.url) {
-			httpRequest.AddCookie(cookie)
-		}
-	}
-
-	var httpResponse *http.Response
-	httpResponse, err = codec.httpClient.Do(httpRequest)
-	if err != nil {
-		return err
-	}
-
-	if codec.cookies != nil {
-		codec.cookies.SetCookies(codec.url, httpResponse.Cookies())
-	}
-
-	codec.mutex.Lock()
-	codec.responses[request.Seq] = httpResponse
-	codec.mutex.Unlock()
-
-	codec.ready <- request.Seq
-
-	return nil
-}
-
-func (codec *clientCodec) ReadResponseHeader(response *rpc.Response) (err error) {
-	var seq uint64
-	select {
-	case seq = <-codec.ready:
-	case <-codec.close:
-		return ErrCodecClosed
-	}
-	response.Seq = seq
-
-	codec.mutex.Lock()
-	httpResponse := codec.responses[seq]
-	delete(codec.responses, seq)
-	codec.mutex.Unlock()
-
-	defer httpResponse.Body.Close()
-
-	if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
-		response.Error = fmt.Sprintf("xmlrpc: unexpected status code %d", httpResponse.StatusCode)
-		return nil
-	}
-
-	body, err := io.ReadAll(httpResponse.Body)
-	if err != nil {
-		response.Error = err.Error()
-		return nil
-	}
-
-	resp := Response(body)
-	if err := resp.Err(); err != nil {
-		response.Error = err.Error()
-		return nil
-	}
-
-	codec.response = resp
-
-	return nil
-}
-
-func (codec *clientCodec) ReadResponseBody(v any) (err error) {
-	if v == nil {
-		return nil
-	}
-	return codec.response.Unmarshal(v)
-}
-
-func (codec *clientCodec) Close() error {
-	if transport, ok := codec.httpClient.Transport.(*http.Transport); ok {
+// Close closes idle connections. The Client can still be used after calling Close.
+func (c *Client) Close() error {
+	if transport, ok := c.httpClient.Transport.(*http.Transport); ok {
 		transport.CloseIdleConnections()
 	}
-
-	close(codec.close)
-
 	return nil
 }
 
@@ -252,17 +135,12 @@ func NewClientWithOptions(requrl string, opts ...Option) (*Client, error) {
 		return nil, err
 	}
 
-	codec := clientCodec{
+	return &Client{
 		url:        u,
 		httpClient: httpClient,
-		close:      make(chan uint64),
-		ready:      make(chan uint64),
-		responses:  make(map[uint64]*http.Response),
 		cookies:    jar,
 		headers:    options.headers,
-	}
-
-	return &Client{rpc.NewClientWithCodec(&codec)}, nil
+	}, nil
 }
 
 // NewClient creates a new XML-RPC client for the given URL.

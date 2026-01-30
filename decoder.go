@@ -78,6 +78,89 @@ func unmarshal(data []byte, v any) (err error) {
 	return nil
 }
 
+// unmarshalResponse decodes a full methodResponse from r, handling faults.
+// If the response is a fault, it returns a FaultError.
+func unmarshalResponse(r io.Reader, v any) (err error) {
+	dec := &decoder{xml.NewDecoder(r)}
+
+	if CharsetReader != nil {
+		dec.CharsetReader = CharsetReader
+	}
+
+	// Find methodResponse
+	var tok xml.Token
+	for {
+		if tok, err = dec.Token(); err != nil {
+			return err
+		}
+		if t, ok := tok.(xml.StartElement); ok {
+			if t.Name.Local == "methodResponse" {
+				break
+			}
+		}
+	}
+
+	// Next element is either <fault> or <params>
+	for {
+		if tok, err = dec.Token(); err != nil {
+			return err
+		}
+		if t, ok := tok.(xml.StartElement); ok {
+			if t.Name.Local == "fault" {
+				var fault FaultError
+				if err = dec.decodeFaultValue(&fault); err != nil {
+					return fmt.Errorf("xmlrpc: failed to parse fault response: %w", err)
+				}
+				return fault
+			}
+			if t.Name.Local == "params" {
+				break
+			}
+		}
+	}
+
+	// Find first <value> in params
+	for {
+		if tok, err = dec.Token(); err != nil {
+			return err
+		}
+		if t, ok := tok.(xml.StartElement); ok {
+			if t.Name.Local == "value" {
+				val := reflect.ValueOf(v)
+				if val.Kind() != reflect.Pointer {
+					return fmt.Errorf("xmlrpc: non-pointer value passed to unmarshal")
+				}
+				if err = dec.decodeValue(val.Elem()); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+
+	// read until end of document
+	err = dec.Skip()
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
+	return nil
+}
+
+func (dec *decoder) decodeFaultValue(fault *FaultError) error {
+	var tok xml.Token
+	var err error
+	for {
+		if tok, err = dec.Token(); err != nil {
+			return err
+		}
+		if t, ok := tok.(xml.StartElement); ok && t.Name.Local == "value" {
+			val := reflect.ValueOf(fault).Elem()
+			return dec.decodeValue(val)
+		}
+	}
+}
+
 func (dec *decoder) decodeValue(val reflect.Value) error {
 	var tok xml.Token
 	var err error
@@ -130,7 +213,10 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 		if err = checkType(val, reflect.Struct); err != nil {
 			if checkType(val, reflect.Map) == nil {
 				if valType.Key().Kind() != reflect.String {
-					return fmt.Errorf("xmlrpc: map key type %s not supported, must be string", valType.Key().Kind())
+					return fmt.Errorf(
+						"xmlrpc: map key type %s not supported, must be string",
+						valType.Key().Kind(),
+					)
 				}
 				ismap = true
 			} else if checkType(val, reflect.Interface) == nil && val.IsNil() {
@@ -363,7 +449,9 @@ func (dec *decoder) decodeValue(val reflect.Value) error {
 				ptime.Set(reflect.ValueOf(t))
 				val.Set(ptime)
 			} else if _, ok := val.Interface().(time.Time); !ok {
-				return TypeMismatchError(fmt.Sprintf("xmlrpc: cannot decode %v to time.Time", val.Kind()))
+				return TypeMismatchError(
+					fmt.Sprintf("xmlrpc: cannot decode %v to time.Time", val.Kind()),
+				)
 			} else {
 				val.Set(reflect.ValueOf(t))
 			}

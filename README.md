@@ -7,12 +7,12 @@ xmlrpc is an implementation of client side part of XMLRPC protocol in Go languag
 ## Status
 
 This project is in minimal maintenance mode with no further development. Bug fixes
-are accepted, but it might take some time until they will be merged.
+are accepted, but it might take some time until they are merged.
 
 ## Installation
 
-To install xmlrpc package run `go get github.com/RedisLabs/xmlrpc`. To use
-it in application add `"github.com/RedisLabs/xmlrpc"` string to `import`
+To install xmlrpc package run `go get github.com/ninech/xmlrpc`. To use
+it in application add `"github.com/ninech/xmlrpc"` string to `import`
 statement.
 
 ## Usage
@@ -27,7 +27,7 @@ statement.
 Second argument of NewClient function is an object that implements
 [http.RoundTripper](http://golang.org/pkg/net/http/#RoundTripper)
 interface, it can be used to get more control over connection options.
-By default it initialized by http.DefaultTransport object.
+By default it is initialized by http.DefaultTransport object.
 
 ### Arguments encoding
 
@@ -44,17 +44,17 @@ Data types encoding rules:
 * xmlrpc.Base64 encoded to base64;
 * slice encoded to array;
 
-Structs encoded to struct by following rules:
+Structs are encoded to struct by the following rules:
 
-* all public field become struct members;
-* field name become member name;
-* if field has xmlrpc tag, its value become member name.
+* all public fields become struct members;
+* field name becomes member name;
+* if field has xmlrpc tag, its value becomes member name.
 * for fields tagged with `",omitempty"`, empty values are omitted;
 * fields tagged with `"-"` are omitted.
 
-Server method can accept few arguments, to handle this case there is
-special approach to handle slice of empty interfaces (`[]interface{}`).
-Each value of such slice encoded as separate argument.
+Server methods can accept multiple arguments, to handle this case there is
+a special approach to handle slice of empty interfaces (`[]interface{}`).
+Each value of such slice is encoded as a separate argument.
 
 ### Result decoding
 
@@ -67,20 +67,25 @@ Data types decoding rules:
 * boolean decoded to bool;
 * string decoded to string;
 * array decoded to slice;
-* structs decoded following the rules described in previous section;
+* structs are decoded following the rules described in previous section;
 * datetime.iso8601 decoded as time.Time data type;
 * base64 decoded to string.
 
-## Implementation details
+## Testing
 
-xmlrpc package contains clientCodec type, that implements [rpc.ClientCodec](http://golang.org/pkg/net/rpc/#ClientCodec)
-interface of [net/rpc](http://golang.org/pkg/net/rpc) package.
+Run unit tests:
 
-xmlrpc package works over HTTP protocol, but some internal functions
-and data type were made public to make it easier to create another
-implementation of xmlrpc that works over another protocol. To encode
-request body there is EncodeMethodCall function. To decode server
-response Response data type can be used.
+```bash
+go test ./...
+```
+
+Run integration tests (requires Docker):
+
+```bash
+docker-compose up -d # Start the test server
+go test -tags integration ./... # Run all tests including integration tests
+docker-compose down # Stop the test server
+```
 
 ## Contribution
 

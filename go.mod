@@ -1,4 +1,4 @@
-module github.com/RedisLabs/xmlrpc
+module github.com/ninech/xmlrpc
 
 go 1.25
 

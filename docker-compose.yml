@@ -1,0 +1,5 @@
+services:
+  xmlrpc-server:
+    build: testdata/server
+    ports:
+      - "5001:5001"
