@@ -16,7 +16,6 @@
 package xmlrpc
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +24,9 @@ import (
 	"net/url"
 	"sync"
 )
+
+// ErrCodecClosed is returned when attempting to read from a closed codec.
+var ErrCodecClosed = fmt.Errorf("xmlrpc: codec is closed")
 
 // Client represents an XML-RPC client. It embeds [rpc.Client] and
 // provides all of its methods, including Call and Close.
@@ -95,7 +97,7 @@ func (codec *clientCodec) ReadResponseHeader(response *rpc.Response) (err error)
 	select {
 	case seq = <-codec.ready:
 	case <-codec.close:
-		return errors.New("codec is closed")
+		return ErrCodecClosed
 	}
 	response.Seq = seq
 
@@ -107,7 +109,7 @@ func (codec *clientCodec) ReadResponseHeader(response *rpc.Response) (err error)
 	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
-		response.Error = fmt.Sprintf("request error: bad status code - %d", httpResponse.StatusCode)
+		response.Error = fmt.Sprintf("xmlrpc: unexpected status code %d", httpResponse.StatusCode)
 		return nil
 	}
 
